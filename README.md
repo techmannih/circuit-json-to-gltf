@@ -2,6 +2,8 @@
 
 Converts circuit JSON to 3D GLTF files. Used for exporting circuits as 3D models.
 
+[Online Playground](https://circuit-json-to-gltf.vercel.app/renderer.html?fixtureId=%7B%22path%22%3A%22CircuitToGltfDemo.fixture.tsx%22%7D&locked=true)
+
 <img width="2424" height="1854" alt="image" src="https://github.com/user-attachments/assets/4ad8b607-e496-449c-88a3-8875b16c0a53" />
 
 ## Features
