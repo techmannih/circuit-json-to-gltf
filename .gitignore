@@ -36,3 +36,4 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 reference-repos
 bun.lock
 relevant-repos
+.vercel
