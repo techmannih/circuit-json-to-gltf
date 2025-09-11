@@ -9,15 +9,9 @@ async function ensureWasmInitialized() {
       if (typeof process !== "undefined" && process.versions?.node) {
         // Dynamically import Node.js modules only in Node.js environment
         const { readFileSync } = await import("fs")
-        const { fileURLToPath } = await import("url")
-        const { dirname, join } = await import("path")
 
         // Load WASM file directly from node_modules
-        const currentDir = dirname(fileURLToPath(import.meta.url))
-        const wasmPath = join(
-          currentDir,
-          "../../node_modules/@resvg/resvg-wasm/index_bg.wasm",
-        )
+        const wasmPath = await import("@resvg/resvg-wasm/index_bg.wasm")
         const wasmBuffer = readFileSync(wasmPath)
         await initWasm(wasmBuffer)
       } else {
