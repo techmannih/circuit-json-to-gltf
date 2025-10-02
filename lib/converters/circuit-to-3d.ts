@@ -1,8 +1,4 @@
-import {
-  type CircuitJson,
-  type CadComponent,
-  any_circuit_element,
-} from "circuit-json"
+import { type CircuitJson, type CadComponent } from "circuit-json"
 import { cju } from "@tscircuit/circuit-json-util"
 import type {
   Box3D,
@@ -14,6 +10,7 @@ import type {
 import { loadSTL } from "../loaders/stl"
 import { loadOBJ } from "../loaders/obj"
 import { loadGLB } from "../loaders/glb"
+import { loadGLTF } from "../loaders/gltf"
 import { renderBoardTextures } from "./board-renderer"
 import { COORDINATE_TRANSFORMS } from "../utils/coordinate-transform"
 
@@ -95,15 +92,18 @@ export async function convertCircuitJsonTo3D(
   const pcbComponentIdsWith3D = new Set<string>()
 
   for (const cad of cadComponents) {
-    let { model_stl_url, model_obj_url, model_glb_url } = cad
+    let { model_stl_url, model_obj_url, model_glb_url, model_gltf_url } = cad
 
-    const hasModelUrl = Boolean(model_stl_url || model_obj_url || model_glb_url)
+    const hasModelUrl = Boolean(
+      model_stl_url || model_obj_url || model_glb_url || model_gltf_url,
+    )
 
     if (!hasModelUrl && cad.footprinter_string) {
       model_glb_url = `https://modelcdn.tscircuit.com/jscad_models/${cad.footprinter_string}.glb`
     }
 
-    if (!model_stl_url && !model_obj_url && !model_glb_url) continue
+    if (!model_stl_url && !model_obj_url && !model_glb_url && !model_gltf_url)
+      continue
 
     pcbComponentIdsWith3D.add(cad.pcb_component_id)
 
@@ -126,11 +126,19 @@ export async function convertCircuitJsonTo3D(
           z: pcbComponent?.center.y ?? 0,
         }
 
+    const meshType = model_stl_url
+      ? "stl"
+      : model_obj_url
+        ? "obj"
+        : model_gltf_url
+          ? "gltf"
+          : "glb"
     const box: Box3D = {
       center,
       size,
-      meshUrl: model_stl_url || model_obj_url || model_glb_url,
-      meshType: model_stl_url ? "stl" : model_obj_url ? "obj" : "glb",
+      meshUrl:
+        model_stl_url! || model_obj_url || model_glb_url || model_gltf_url,
+      meshType: meshType as any,
     }
 
     // Add rotation if specified
@@ -143,19 +151,17 @@ export async function convertCircuitJsonTo3D(
     // STL/OBJ files need Z-up to Y-up conversion
     const defaultTransform =
       coordinateTransform ??
-      (model_glb_url
+      (model_glb_url || model_gltf_url
         ? undefined // GLB loader has its own default transform
         : COORDINATE_TRANSFORMS.Z_UP_TO_Y_UP_USB_FIX)
-    try {
-      if (model_stl_url) {
-        box.mesh = await loadSTL(model_stl_url, defaultTransform)
-      } else if (model_obj_url) {
-        box.mesh = await loadOBJ(model_obj_url, defaultTransform)
-      } else if (model_glb_url) {
-        box.mesh = await loadGLB(model_glb_url, defaultTransform)
-      }
-    } catch (error) {
-      console.warn(`Failed to load 3D model: ${error}`)
+    if (model_stl_url) {
+      box.mesh = await loadSTL(model_stl_url, defaultTransform)
+    } else if (model_obj_url) {
+      box.mesh = await loadOBJ(model_obj_url, defaultTransform)
+    } else if (model_glb_url) {
+      box.mesh = await loadGLB(model_glb_url, defaultTransform)
+    } else if (model_gltf_url) {
+      box.mesh = await loadGLTF(model_gltf_url, defaultTransform)
     }
 
     // Only set color if mesh loading failed (fallback to simple box)
