@@ -143,6 +143,8 @@ export async function convertCircuitJsonTo3D(
       y: defaultComponentHeight,
       z: pcbComponent?.height ?? 2,
     }
+    const componentHalfHeight = (size.y ?? defaultComponentHeight) / 2
+    const boardHalfThickness = effectiveBoardThickness / 2
 
     // Determine position
     const center = cad.position
@@ -156,10 +158,29 @@ export async function convertCircuitJsonTo3D(
       : {
           x: pcbComponent?.center.x ?? 0,
           y: isBottomLayer
-            ? -(effectiveBoardThickness / 2 + size.y / 2)
-            : effectiveBoardThickness / 2 + size.y / 2,
+            ? -(boardHalfThickness + componentHalfHeight)
+            : boardHalfThickness + componentHalfHeight,
           z: pcbComponent?.center.y ?? 0,
         }
+
+    if (cad.position) {
+      const positionOffset =
+        typeof cad.position.z === "number" && cad.position.z > 0
+          ? cad.position.z
+          : 0
+
+      if (isBottomLayer) {
+        const minimumCenterY = -(boardHalfThickness + componentHalfHeight + positionOffset)
+        if (center.y > minimumCenterY) {
+          center.y = minimumCenterY
+        }
+      } else {
+        const minimumCenterY = boardHalfThickness + componentHalfHeight + positionOffset
+        if (center.y < minimumCenterY) {
+          center.y = minimumCenterY
+        }
+      }
+    }
 
     const meshType = model_stl_url
       ? "stl"
