@@ -11,6 +11,8 @@ import type {
   CircuitTo3DOptions,
   Camera3D,
   Light3D,
+  Point3,
+  Size3,
 } from "../types"
 import { loadSTL } from "../loaders/stl"
 import { loadOBJ } from "../loaders/obj"
@@ -19,6 +21,7 @@ import { loadGLTF } from "../loaders/gltf"
 import { renderBoardTextures } from "./board-renderer"
 import { COORDINATE_TRANSFORMS } from "../utils/coordinate-transform"
 import { createBoardMesh } from "../utils/pcb-board-geometry"
+import { createLabelTexture } from "../utils/label-texture"
 
 const DEFAULT_BOARD_THICKNESS = 1.6 // mm
 const DEFAULT_COMPONENT_HEIGHT = 2 // mm
@@ -133,6 +136,10 @@ export async function convertCircuitJsonTo3D(
 
     // Get the associated PCB component
     const pcbComponent = db.pcb_component.get(cad.pcb_component_id)
+    const sourceComponent = pcbComponent?.source_component_id
+      ? db.source_component?.get(pcbComponent.source_component_id)
+      : undefined
+    const labelText = sourceComponent?.name ?? (cad as any)?.name ?? ""
 
     // Check if component is on bottom layer
     const isBottomLayer = pcbComponent?.layer === "bottom"
@@ -174,6 +181,10 @@ export async function convertCircuitJsonTo3D(
       meshUrl:
         model_stl_url! || model_obj_url || model_glb_url || model_gltf_url,
       meshType: meshType as any,
+    }
+
+    if (labelText) {
+      box.label = labelText
     }
 
     // Add rotation if specified
@@ -236,6 +247,16 @@ export async function convertCircuitJsonTo3D(
     }
 
     boxes.push(box)
+
+    if (labelText) {
+      await addLabelOverlayBox(boxes, {
+        label: labelText,
+        baseCenter: center,
+        baseSize: size,
+        rotation: box.rotation,
+        isBottomLayer,
+      })
+    }
   }
 
   // Add generic boxes for components without 3D models
@@ -253,7 +274,9 @@ export async function convertCircuitJsonTo3D(
     // Check if component is on bottom layer
     const isBottomLayer = component.layer === "bottom"
 
-    boxes.push({
+    const labelText = sourceComponent?.name ?? "?"
+
+    const fallbackBox: Box3D = {
       center: {
         x: component.center.x,
         y: isBottomLayer
@@ -267,9 +290,21 @@ export async function convertCircuitJsonTo3D(
         z: component.height,
       },
       color: componentColor,
-      label: sourceComponent?.name ?? "?",
+      label: labelText,
       labelColor: "white",
-    })
+    }
+
+    boxes.push(fallbackBox)
+
+    if (labelText && labelText !== "?") {
+      await addLabelOverlayBox(boxes, {
+        label: labelText,
+        baseCenter: fallbackBox.center,
+        baseSize: fallbackBox.size,
+        rotation: fallbackBox.rotation,
+        isBottomLayer,
+      })
+    }
   }
 
   // Create a default camera positioned to view the board or components
@@ -367,4 +402,70 @@ export async function convertCircuitJsonTo3D(
     camera,
     lights,
   }
+}
+
+interface LabelOverlayOptions {
+  label: string
+  baseCenter: Point3
+  baseSize: Size3
+  rotation?: Point3
+  isBottomLayer?: boolean
+}
+
+async function addLabelOverlayBox(
+  boxes: Box3D[],
+  {
+    label,
+    baseCenter,
+    baseSize,
+    rotation,
+    isBottomLayer,
+  }: LabelOverlayOptions,
+): Promise<void> {
+  const trimmedLabel = label.trim()
+  if (!trimmedLabel) return
+
+  let labelTexture: string
+  try {
+    labelTexture = await createLabelTexture(trimmedLabel)
+  } catch (error) {
+    console.warn("Failed to generate label texture", error)
+    return
+  }
+
+  const overlayThickness = 0.04
+  const overlayGap = 0.05
+  const orientationMultiplier = isBottomLayer ? -1 : 1
+
+  const overlayCenter: Point3 = {
+    x: baseCenter.x,
+    y:
+      baseCenter.y +
+      orientationMultiplier *
+        (baseSize.y / 2 + overlayThickness / 2 + overlayGap),
+    z: baseCenter.z,
+  }
+
+  const overlaySize: Size3 = {
+    x: Math.max(baseSize.x, 1),
+    y: overlayThickness,
+    z: Math.max(baseSize.z, 1),
+  }
+
+  const overlayRotation = rotation?.y
+    ? { x: 0, y: rotation.y, z: 0 }
+    : undefined
+
+  const overlayBox: Box3D = {
+    center: overlayCenter,
+    size: overlaySize,
+    rotation: overlayRotation,
+    texture: {
+      top: labelTexture,
+      bottom: labelTexture,
+    },
+    label: `${trimmedLabel}-label`,
+  }
+
+  boxes.push(overlayBox)
 }
