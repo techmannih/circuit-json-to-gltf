@@ -9,11 +9,14 @@
     "format:check": "biome format .",
     "build:site": "cosmos-export",
     "start": "cosmos",
-    "build": "tsup-node lib/index.ts --format esm --dts --outDir dist"
+    "build": "tsup-node"
   },
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@jscad/modeling": "^2.12.6"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.1.4",
     "@google/model-viewer": "^4.1.0",
@@ -53,8 +56,5 @@
     "@resvg/resvg-js": {
       "optional": true
     }
-  },
-  "dependencies": {
-    "@jscad/modeling": "^2.12.6"
   }
 }
