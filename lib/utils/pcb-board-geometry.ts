@@ -125,14 +125,80 @@ const createHoleGeoms = (
 
   for (const hole of holes) {
     const holeRecord = hole as unknown as Record<string, unknown>
+    const relX = hole.x - boardCenter.x
+    const relY = -(hole.y - boardCenter.y) // Negate y to account for rotateX(-PI/2)
+
+    const holeShape = holeRecord.hole_shape as string | undefined
+
+    // Handle pill-shaped holes (non-rotated)
+    if (holeShape === "pill") {
+      const holeWidth = getNumberProperty(holeRecord, "hole_width")
+      const holeHeight = getNumberProperty(holeRecord, "hole_height")
+      if (!holeWidth || !holeHeight) continue
+
+      const rotate = holeHeight > holeWidth
+      const width = rotate ? holeHeight : holeWidth
+      const height = rotate ? holeWidth : holeHeight
+
+      const pillHole = createPillHole(
+        relX,
+        relY,
+        width,
+        height,
+        thickness,
+        rotate,
+      )
+      holeGeoms.push(pillHole)
+      continue
+    }
+
+    // Handle rotated pill-shaped holes
+    if (holeShape === "rotated_pill") {
+      const holeWidth = getNumberProperty(holeRecord, "hole_width")
+      const holeHeight = getNumberProperty(holeRecord, "hole_height")
+      if (!holeWidth || !holeHeight) continue
+
+      const rotation = getNumberProperty(holeRecord, "ccw_rotation") ?? 0
+      // Negate rotation because the board is flipped (rotateX(-PI/2) at the end)
+      // This converts CCW rotation in circuit coordinates to correct rotation in 3D
+      const rotationRad = -(rotation * Math.PI) / 180
+
+      // For rotated pill, don't auto-rotate based on dimensions
+      // The pill shape is always created with the specified width/height
+      // and then rotated by ccw_rotation
+      const minDimension = Math.min(holeWidth, holeHeight)
+      const maxAllowedRadius = Math.max(0, minDimension / 2 - RADIUS_EPSILON)
+      const roundRadius =
+        maxAllowedRadius <= 0 ? 0 : Math.min(holeHeight / 2, maxAllowedRadius)
+
+      const hole2d = roundedRectangle({
+        size: [holeWidth, holeHeight],
+        roundRadius,
+        segments: DEFAULT_SEGMENTS,
+      })
+
+      let hole3d = extrudeLinear({ height: thickness + 1 }, hole2d)
+      hole3d = translate([0, 0, -(thickness + 1) / 2], hole3d)
+
+      // Apply rotation around center before positioning
+      if (rotationRad !== 0) {
+        hole3d = rotateZ(rotationRad, hole3d)
+      }
+
+      // Finally translate to position
+      hole3d = translate([relX, relY, 0], hole3d)
+
+      holeGeoms.push(hole3d)
+      continue
+    }
+
+    // Handle circular holes
     const diameter =
       getNumberProperty(holeRecord, "hole_diameter") ??
       getNumberProperty(holeRecord, "diameter")
     if (!diameter) continue
 
     const radius = diameter / 2
-    const relX = hole.x - boardCenter.x
-    const relY = -(hole.y - boardCenter.y) // Negate y to account for rotateX(-PI/2)
     holeGeoms.push(createCircularHole(relX, relY, radius, thickness))
   }
 
