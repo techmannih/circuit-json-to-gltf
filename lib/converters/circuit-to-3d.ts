@@ -164,15 +164,13 @@ export async function convertCircuitJsonTo3D(
     const center = cad.position
       ? {
           x: cad.position.x,
-          y: isBottomLayer
-            ? -Math.abs(cad.position.z) // Ensure negative Y for bottom layer
-            : cad.position.z,
+          y: cad.position.z,
           z: cad.position.y,
         }
       : {
           x: pcbComponent?.center.x ?? 0,
           y: isBottomLayer
-            ? -(effectiveBoardThickness + size.y / 2)
+            ? -(effectiveBoardThickness / 2 + size.y / 2)
             : effectiveBoardThickness / 2 + size.y / 2,
           z: pcbComponent?.center.y ?? 0,
         }
@@ -204,27 +202,18 @@ export async function convertCircuitJsonTo3D(
       // For GLB/GLTF models, we need to remap rotation axes because the coordinate
       // system has Y and Z swapped. Circuit JSON uses Z-up, but the transformed
       // model uses Y-up.
-      if (model_glb_url || model_gltf_url || hasFootprinterModel) {
-        // Remap rotation: circuit Z -> model Y, circuit Y -> model Z
-        box.rotation = convertRotationFromCadRotation({
-          x: isBottomLayer ? cad.rotation.x + 180 : cad.rotation.x,
-          y: cad.rotation.z, // Circuit Z rotation becomes model Y rotation
-          z: cad.rotation.y, // Circuit Y rotation becomes model Z rotation
-        })
-      } else {
-        box.rotation = convertRotationFromCadRotation({
-          x: isBottomLayer ? cad.rotation.x + 180 : cad.rotation.x,
-          y: cad.rotation.y,
-          z: cad.rotation.z,
-        })
-      }
+      box.rotation = convertRotationFromCadRotation({
+        x: cad.rotation.x,
+        y: cad.rotation.z, // Circuit Z rotation becomes model Y rotation
+        z: cad.rotation.y, // Circuit Y rotation becomes model Z rotation
+      })
     } else if (isBottomLayer) {
       // If no rotation specified but component is on bottom, flip it
       if (model_glb_url || model_gltf_url || hasFootprinterModel) {
         box.rotation = convertRotationFromCadRotation({
-          x: 180,
+          x: 0,
           y: 0,
-          z: 0,
+          z: 180, // Flip via Z rotation for GLB models (matches circuit JSON convention)
         })
       } else {
         box.rotation = convertRotationFromCadRotation({

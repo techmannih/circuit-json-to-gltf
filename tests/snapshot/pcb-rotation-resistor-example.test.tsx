@@ -3,7 +3,7 @@ import { renderGLTFToPNGBufferFromGLBBuffer } from "poppygl"
 import { convertCircuitJsonToGltf } from "../../lib/index"
 import { getBestCameraPosition } from "../../lib/utils/camera-position"
 import { Circuit } from "tscircuit"
-import type { CircuitJson } from "circuit-json"
+import type { CadComponent, CircuitJson } from "circuit-json"
 
 test("pcb rotation top-bottom resistor example with dual 3d views", async () => {
   // Create circuit using tscircuit JSX syntax
@@ -32,6 +32,18 @@ test("pcb rotation top-bottom resistor example with dual 3d views", async () => 
   circuit.render()
   const circuitJson = circuit.getCircuitJson()
 
+  // Manually set rotations because core is broken, these rotations are correct
+  const topCadComponent = circuitJson.find(
+    (item) => item.type === "cad_component" && item.position.z > 0,
+  )! as CadComponent
+  topCadComponent.rotation!.y = 0
+  topCadComponent.rotation!.z = 45
+  const bottomCadComponent = circuitJson.find(
+    (item) => item.type === "cad_component" && item.position.z < 0,
+  )! as CadComponent
+  bottomCadComponent.rotation!.y = 180
+  bottomCadComponent.rotation!.z = 315
+
   // Test 1: Top view (default camera angle)
   const glbResult = await convertCircuitJsonToGltf(circuitJson as CircuitJson, {
     format: "glb",
@@ -51,7 +63,7 @@ test("pcb rotation top-bottom resistor example with dual 3d views", async () => 
 
   expect(
     renderGLTFToPNGBufferFromGLBBuffer(glbResult as ArrayBuffer, {
-      camPos: [15, -15, 15],
+      camPos: [8, -8, 8],
     }),
   ).toMatchPngSnapshot(import.meta.path, "pcb-rotation-resistor-example-bottom")
 })
