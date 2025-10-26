@@ -4,6 +4,7 @@ import type {
   PcbBoard,
   PcbHole,
   PCBPlatedHole,
+  PcbCutoutRect,
 } from "circuit-json"
 import { createBoardMesh } from "../../lib/utils/pcb-board-geometry"
 import { convertCircuitJsonTo3D } from "../../lib/converters/circuit-to-3d"
@@ -92,6 +93,55 @@ test("createBoardMesh subtracts drilled and plated holes", () => {
   const expectedArea = outlineArea - drilledArea - platedArea
 
   expect(topArea).toBeCloseTo(expectedArea, 1)
+})
+
+test("createBoardMesh subtracts rectangular cutouts", () => {
+  const board: PcbBoard = {
+    type: "pcb_board",
+    pcb_board_id: "board_cutout",
+    center: { x: 0, y: 0 },
+    width: 40,
+    height: 20,
+    thickness: 1.6,
+    num_layers: 2,
+    material: "fr4",
+  }
+
+  const cutouts: PcbCutoutRect[] = [
+    {
+      type: "pcb_cutout",
+      pcb_cutout_id: "cutout_rect",
+      pcb_board_id: "board_cutout" as any,
+      shape: "rect",
+      center: { x: 5, y: -3 },
+      width: 8,
+      height: 4,
+      rotation: { deg: 30 } as any,
+    } as PcbCutoutRect,
+  ]
+
+  const mesh = createBoardMesh(board, {
+    thickness: board.thickness ?? 1.6,
+    cutouts,
+  })
+
+  expect(mesh.triangles.length).toBeGreaterThan(0)
+
+  const topArea = mesh.triangles
+    .filter((triangle) => triangle.normal.y > 0.9)
+    .reduce((sum, triangle) => {
+      const [a, b, c] = triangle.vertices
+      return sum + triangleArea(a, b, c)
+    }, 0)
+
+  const outlineArea = board.width * board.height
+  const cutoutArea = cutouts.reduce((sum, cutout) => {
+    const width = typeof cutout.width === "number" ? cutout.width : 0
+    const height = typeof cutout.height === "number" ? cutout.height : 0
+    return sum + width * height
+  }, 0)
+
+  expect(topArea).toBeCloseTo(outlineArea - cutoutArea, 1)
 })
 
 test("convertCircuitJsonTo3D includes board mesh for outline boards", async () => {

@@ -15,7 +15,13 @@ import * as geom3 from "@jscad/modeling/src/geometries/geom3"
 import measureBoundingBox from "@jscad/modeling/src/measurements/measureBoundingBox"
 import type { Geom3 } from "@jscad/modeling/src/geometries/types"
 import type { Vec2 } from "@jscad/modeling/src/maths/types"
-import type { PcbBoard, PcbHole, PCBPlatedHole, Point } from "circuit-json"
+import type {
+  PcbBoard,
+  PcbHole,
+  PCBPlatedHole,
+  PcbCutoutRect,
+  Point,
+} from "circuit-json"
 import type { BoundingBox, STLMesh, Triangle } from "../types"
 
 const DEFAULT_SEGMENTS = 64
@@ -25,6 +31,7 @@ export interface BoardGeometryOptions {
   thickness: number
   holes?: PcbHole[]
   platedHoles?: PCBPlatedHole[]
+  cutouts?: PcbCutoutRect[]
 }
 
 const toVec2 = (point: Point, center: { x: number; y: number }): Vec2 => [
@@ -49,6 +56,75 @@ const getNumberProperty = (
 ): number | undefined => {
   const value = obj[key]
   return typeof value === "number" ? value : undefined
+}
+
+const resolveLengthValue = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    const match = trimmed.match(/^(-?\d+(?:\.\d+)?)(mm|mil|in)?$/i)
+    if (match) {
+      const magnitude = Number.parseFloat(match[1]!)
+      const unit = match[2]?.toLowerCase()
+      if (!unit || unit === "mm") return magnitude
+      if (unit === "mil") return magnitude * 0.0254
+      if (unit === "in") return magnitude * 25.4
+    }
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>
+    if (typeof record.value === "number") {
+      const unit = (record.unit ?? record.units) as string | undefined
+      if (!unit || unit === "mm") return record.value
+      if (unit === "mil") return record.value * 0.0254
+      if (unit === "in") return record.value * 25.4
+      return record.value
+    }
+    const mm = record.mm ?? record.millimeters ?? record.millimetres
+    if (typeof mm === "number") return mm
+    const mil = record.mil ?? record.mils
+    if (typeof mil === "number") return mil * 0.0254
+    const inch = record.in ?? record.inch ?? record.inches
+    if (typeof inch === "number") return inch * 25.4
+  }
+  return undefined
+}
+
+const resolveRotationRadians = (rotation: unknown): number => {
+  if (!rotation) return 0
+  if (typeof rotation === "number" && Number.isFinite(rotation)) {
+    return (rotation * Math.PI) / 180
+  }
+  if (typeof rotation === "object") {
+    const record = rotation as Record<string, unknown>
+    const candidates = [
+      record.deg,
+      record.degs,
+      record.degree,
+      record.degrees,
+      record.ccw,
+      record.ccw_degrees,
+      record.ccw_degree,
+    ]
+    for (const value of candidates) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return (value * Math.PI) / 180
+      }
+    }
+    const radCandidates = [
+      record.rad,
+      record.rads,
+      record.radian,
+      record.radians,
+      record.ccw_radians,
+    ]
+    for (const value of radCandidates) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value
+      }
+    }
+  }
+  return 0
 }
 
 const createBoardOutlineGeom = (
@@ -241,6 +317,38 @@ const createHoleGeoms = (
   return holeGeoms
 }
 
+const createCutoutGeoms = (
+  boardCenter: { x: number; y: number },
+  thickness: number,
+  cutouts: PcbCutoutRect[] = [],
+): Geom3[] => {
+  const geoms: Geom3[] = []
+
+  for (const cutout of cutouts) {
+    if (cutout.shape !== "rect") continue
+    const width = resolveLengthValue((cutout as any).width)
+    const height = resolveLengthValue((cutout as any).height)
+    if (!width || !height) continue
+
+    const relX = cutout.center.x - boardCenter.x
+    const relY = -(cutout.center.y - boardCenter.y)
+
+    const rect2d = rectangle({ size: [width, height] })
+    let geom = extrudeLinear({ height: thickness + 1 }, rect2d)
+    geom = translate([0, 0, -(thickness + 1) / 2], geom)
+
+    const rotationRad = resolveRotationRadians((cutout as any).rotation)
+    if (rotationRad) {
+      geom = rotateZ(-rotationRad, geom)
+    }
+
+    geom = translate([relX, relY, 0], geom)
+    geoms.push(geom)
+  }
+
+  return geoms
+}
+
 const geom3ToTriangles = (geometry: Geom3, polygons?: any[]): Triangle[] => {
   const sourcePolygons = polygons ?? geom3.toPolygons(geometry)
   const triangles: Triangle[] = []
@@ -300,14 +408,16 @@ export const createBoardMesh = (
   board: PcbBoard,
   options: BoardGeometryOptions,
 ): STLMesh => {
-  const { thickness, holes = [], platedHoles = [] } = options
+  const { thickness, holes = [], platedHoles = [], cutouts = [] } = options
   const center = board.center ?? { x: 0, y: 0 }
 
   let boardGeom = createBoardOutlineGeom(board, center, thickness)
 
   const holeGeoms = createHoleGeoms(center, thickness, holes, platedHoles)
-  if (holeGeoms.length > 0) {
-    boardGeom = subtract(boardGeom, ...holeGeoms)
+  const cutoutGeoms = createCutoutGeoms(center, thickness, cutouts)
+  const subtractGeoms = [...holeGeoms, ...cutoutGeoms]
+  if (subtractGeoms.length > 0) {
+    boardGeom = subtract(boardGeom, ...subtractGeoms)
   }
 
   boardGeom = rotateX(-Math.PI / 2, boardGeom)
