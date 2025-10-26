@@ -94,6 +94,55 @@ test("createBoardMesh subtracts drilled and plated holes", () => {
   expect(topArea).toBeCloseTo(expectedArea, 1)
 })
 
+test("createBoardMesh subtracts polygonal board cutouts", () => {
+  const board: PcbBoard = {
+    type: "pcb_board",
+    pcb_board_id: "board-with-cutout",
+    center: { x: 10, y: 5 },
+    width: 20,
+    height: 10,
+    thickness: 1.6,
+    num_layers: 2,
+    material: "fr4",
+    outline: [
+      { x: 0, y: 0 },
+      { x: 20, y: 0 },
+      { x: 20, y: 10 },
+      { x: 0, y: 10 },
+    ],
+  }
+
+  const squareCutout = {
+    type: "pcb_board_cutout",
+    pcb_board_cutout_id: "cutout1",
+    pcb_board_id: board.pcb_board_id,
+    outline: [
+      { x: 8, y: 3 },
+      { x: 12, y: 3 },
+      { x: 12, y: 7 },
+      { x: 8, y: 7 },
+    ],
+  }
+
+  const mesh = createBoardMesh(board, {
+    thickness: board.thickness ?? 1.6,
+    cutouts: [squareCutout],
+  })
+
+  const topArea = mesh.triangles
+    .filter((triangle) => triangle.normal.y > 0.9)
+    .reduce((sum, triangle) => {
+      const [a, b, c] = triangle.vertices
+      return sum + triangleArea(a, b, c)
+    }, 0)
+
+  const outlineArea = board.width * board.height
+  const cutoutArea = 4 * 4
+  const expectedArea = outlineArea - cutoutArea
+
+  expect(topArea).toBeCloseTo(expectedArea, 1)
+})
+
 test("convertCircuitJsonTo3D includes board mesh for outline boards", async () => {
   const board: PcbBoard = {
     type: "pcb_board",

@@ -64,11 +64,15 @@ export async function convertCircuitJsonTo3D(
     const pcbHoles = (db.pcb_hole?.list?.() ?? []) as PcbHole[]
     const pcbPlatedHoles = (db.pcb_plated_hole?.list?.() ??
       []) as PCBPlatedHole[]
+    const pcbBoardCutouts = (db.pcb_board_cutout?.list?.() ?? []).filter(
+      (cutout: any) => cutout?.pcb_board_id === pcbBoard.pcb_board_id,
+    )
 
     const boardMesh = createBoardMesh(pcbBoard, {
       thickness: effectiveBoardThickness,
       holes: pcbHoles,
       platedHoles: pcbPlatedHoles,
+      cutouts: pcbBoardCutouts,
     })
 
     const meshWidth = boardMesh.boundingBox.max.x - boardMesh.boundingBox.min.x
