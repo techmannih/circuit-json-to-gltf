@@ -25,6 +25,7 @@ export interface BoardGeometryOptions {
   thickness: number
   holes?: PcbHole[]
   platedHoles?: PCBPlatedHole[]
+  cutouts?: unknown[]
 }
 
 const toVec2 = (point: Point, center: { x: number; y: number }): Vec2 => [
@@ -49,6 +50,40 @@ const getNumberProperty = (
 ): number | undefined => {
   const value = obj[key]
   return typeof value === "number" ? value : undefined
+}
+
+const isPoint = (value: unknown): value is Point =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof (value as Point).x === "number" &&
+      typeof (value as Point).y === "number",
+  )
+
+const getPointArray = (value: unknown): Point[] | undefined => {
+  if (!value) return undefined
+
+  if (Array.isArray(value)) {
+    const points = value.filter((pt): pt is Point => isPoint(pt))
+    return points.length >= 3 ? points : undefined
+  }
+
+  return undefined
+}
+
+const resolveCutoutPoints = (cutout: unknown): Point[] | undefined => {
+  if (!cutout) return undefined
+
+  if (Array.isArray(cutout)) return getPointArray(cutout)
+
+  const record = cutout as Record<string, unknown>
+
+  return (
+    getPointArray(record.outline) ??
+    getPointArray(record.points) ??
+    getPointArray(record.polygon) ??
+    getPointArray(record.path)
+  )
 }
 
 const createBoardOutlineGeom = (
@@ -241,6 +276,35 @@ const createHoleGeoms = (
   return holeGeoms
 }
 
+const createCutoutGeoms = (
+  boardCenter: { x: number; y: number },
+  thickness: number,
+  cutouts: unknown[] = [],
+): Geom3[] => {
+  const cutoutGeoms: Geom3[] = []
+
+  for (const cutout of cutouts) {
+    const points = resolveCutoutPoints(cutout)
+    if (!points) continue
+
+    let cutoutPoints: Vec2[] = points.map((pt) => [
+      pt.x - boardCenter.x,
+      -(pt.y - boardCenter.y),
+    ])
+
+    if (arePointsClockwise(cutoutPoints)) {
+      cutoutPoints = cutoutPoints.slice().reverse()
+    }
+
+    const shape2d = polygon({ points: cutoutPoints })
+    let cutoutGeom = extrudeLinear({ height: thickness + 1 }, shape2d)
+    cutoutGeom = translate([0, 0, -(thickness + 1) / 2], cutoutGeom)
+    cutoutGeoms.push(cutoutGeom)
+  }
+
+  return cutoutGeoms
+}
+
 const geom3ToTriangles = (geometry: Geom3, polygons?: any[]): Triangle[] => {
   const sourcePolygons = polygons ?? geom3.toPolygons(geometry)
   const triangles: Triangle[] = []
@@ -300,14 +364,16 @@ export const createBoardMesh = (
   board: PcbBoard,
   options: BoardGeometryOptions,
 ): STLMesh => {
-  const { thickness, holes = [], platedHoles = [] } = options
+  const { thickness, holes = [], platedHoles = [], cutouts = [] } = options
   const center = board.center ?? { x: 0, y: 0 }
 
   let boardGeom = createBoardOutlineGeom(board, center, thickness)
 
   const holeGeoms = createHoleGeoms(center, thickness, holes, platedHoles)
-  if (holeGeoms.length > 0) {
-    boardGeom = subtract(boardGeom, ...holeGeoms)
+  const cutoutGeoms = createCutoutGeoms(center, thickness, cutouts)
+
+  if (holeGeoms.length > 0 || cutoutGeoms.length > 0) {
+    boardGeom = subtract(boardGeom, ...holeGeoms, ...cutoutGeoms)
   }
 
   boardGeom = rotateX(-Math.PI / 2, boardGeom)
