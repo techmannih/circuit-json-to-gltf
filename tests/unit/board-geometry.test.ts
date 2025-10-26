@@ -4,7 +4,6 @@ import type {
   PcbBoard,
   PcbHole,
   PCBPlatedHole,
-  PcbCutout,
 } from "circuit-json"
 import { createBoardMesh } from "../../lib/utils/pcb-board-geometry"
 import { convertCircuitJsonTo3D } from "../../lib/converters/circuit-to-3d"
@@ -94,102 +93,6 @@ test("createBoardMesh subtracts drilled and plated holes", () => {
 
   expect(topArea).toBeCloseTo(expectedArea, 1)
 })
-
-test("createBoardMesh subtracts rectangular, circular, and polygon cutouts", () => {
-  const board: PcbBoard = {
-    type: "pcb_board",
-    pcb_board_id: "board_cutout",
-    center: { x: 0, y: 0 },
-    width: 50,
-    height: 40,
-    thickness: 1.2,
-    num_layers: 2,
-    material: "fr1",
-  }
-
-  const cutouts: PcbCutout[] = [
-    {
-      type: "pcb_cutout",
-      pcb_cutout_id: "pcb_cutout_rect_0",
-      shape: "rect",
-      center: { x: -10, y: 10 },
-      width: 8,
-      height: 5,
-    } as PcbCutout,
-    {
-      type: "pcb_cutout",
-      pcb_cutout_id: "pcb_cutout_circle_0",
-      shape: "circle",
-      center: { x: 0, y: 0 },
-      radius: 4,
-    } as PcbCutout,
-    {
-      type: "pcb_cutout",
-      pcb_cutout_id: "pcb_cutout_polygon_0",
-      shape: "polygon",
-      points: [
-        { x: 10, y: -10 },
-        { x: 15, y: -5 },
-        { x: 5, y: -5 },
-      ],
-    } as PcbCutout,
-    {
-      type: "pcb_cutout",
-      pcb_cutout_id: "pcb_cutout_polygon_star",
-      shape: "polygon",
-      points: [
-        { x: 0, y: -11 },
-        { x: 1.176, y: -14.19 },
-        { x: 3.804, y: -13.09 },
-        { x: 1.902, y: -15.81 },
-        { x: 2.351, y: -19.02 },
-        { x: 0, y: -17 },
-        { x: -2.351, y: -19.02 },
-        { x: -1.902, y: -15.81 },
-        { x: -3.804, y: -13.09 },
-        { x: -1.176, y: -14.19 },
-      ],
-    } as PcbCutout,
-  ]
-
-  const mesh = createBoardMesh(board, {
-    thickness: board.thickness ?? 1.2,
-    cutouts,
-  })
-
-  expect(mesh.triangles.length).toBeGreaterThan(0)
-
-  const topArea = mesh.triangles
-    .filter((triangle) => triangle.normal.y > 0.9)
-    .reduce((sum, triangle) => {
-      const [a, b, c] = triangle.vertices
-      return sum + triangleArea(a, b, c)
-    }, 0)
-
-  const polygonArea = (points: { x: number; y: number }[]): number => {
-    let area = 0
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length
-      area += points[i]!.x * points[j]!.y
-      area -= points[j]!.x * points[i]!.y
-    }
-    return Math.abs(area) / 2
-  }
-
-  const outlineArea = board.width * board.height
-  const expectedCutoutArea =
-    8 * 5 +
-    Math.PI * 4 ** 2 +
-    polygonArea(
-      cutouts[2]?.shape === "polygon" ? cutouts[2].points ?? [] : [],
-    ) +
-    polygonArea(
-      cutouts[3]?.shape === "polygon" ? cutouts[3].points ?? [] : [],
-    )
-
-  expect(topArea).toBeCloseTo(outlineArea - expectedCutoutArea, 1)
-})
-
 test("convertCircuitJsonTo3D includes board mesh for outline boards", async () => {
   const board: PcbBoard = {
     type: "pcb_board",

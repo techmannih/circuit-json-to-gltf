@@ -306,8 +306,9 @@ const createCutoutGeoms = (
             record.ccw,
             record.ccw_degrees,
             record.ccw_degree,
-          ].find((value): value is number =>
-            typeof value === "number" && Number.isFinite(value),
+          ].find(
+            (value): value is number =>
+              typeof value === "number" && Number.isFinite(value),
           )
           if (degreeCandidate !== undefined) {
             rotationRad = (degreeCandidate * Math.PI) / 180
@@ -318,8 +319,9 @@ const createCutoutGeoms = (
               record.radian,
               record.radians,
               record.ccw_radians,
-            ].find((value): value is number =>
-              typeof value === "number" && Number.isFinite(value),
+            ].find(
+              (value): value is number =>
+                typeof value === "number" && Number.isFinite(value),
             )
             if (radCandidate !== undefined) {
               rotationRad = radCandidate
