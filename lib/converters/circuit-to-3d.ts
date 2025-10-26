@@ -3,9 +3,7 @@ import {
   type CadComponent,
   type PcbHole,
   type PCBPlatedHole,
-  type PcbCutoutRect,
-  type PcbCutoutCircle,
-  type PcbCutoutPolygon,
+  type PcbCutout,
 } from "circuit-json"
 import { cju } from "@tscircuit/circuit-json-util"
 import type {
@@ -67,11 +65,7 @@ export async function convertCircuitJsonTo3D(
     const pcbHoles = (db.pcb_hole?.list?.() ?? []) as PcbHole[]
     const pcbPlatedHoles = (db.pcb_plated_hole?.list?.() ??
       []) as PCBPlatedHole[]
-    const pcbCutouts = (db.pcb_cutout?.list?.() ?? []) as (
-      | PcbCutoutRect
-      | PcbCutoutCircle
-      | PcbCutoutPolygon
-    )[]
+    const pcbCutouts = (db.pcb_cutout?.list?.() ?? []) as PcbCutout[]
     const boardCutouts = pcbCutouts.filter((cutout) => {
       const cutoutBoardId = (cutout as Record<string, any>).pcb_board_id
       return (

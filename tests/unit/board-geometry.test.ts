@@ -4,9 +4,7 @@ import type {
   PcbBoard,
   PcbHole,
   PCBPlatedHole,
-  PcbCutoutRect,
-  PcbCutoutCircle,
-  PcbCutoutPolygon,
+  PcbCutout,
 } from "circuit-json"
 import { createBoardMesh } from "../../lib/utils/pcb-board-geometry"
 import { convertCircuitJsonTo3D } from "../../lib/converters/circuit-to-3d"
@@ -109,7 +107,7 @@ test("createBoardMesh subtracts rectangular, circular, and polygon cutouts", () 
     material: "fr1",
   }
 
-  const cutouts: (PcbCutoutRect | PcbCutoutCircle | PcbCutoutPolygon)[] = [
+  const cutouts: PcbCutout[] = [
     {
       type: "pcb_cutout",
       pcb_cutout_id: "pcb_cutout_rect_0",
@@ -117,14 +115,14 @@ test("createBoardMesh subtracts rectangular, circular, and polygon cutouts", () 
       center: { x: -10, y: 10 },
       width: 8,
       height: 5,
-    } as PcbCutoutRect,
+    } as PcbCutout,
     {
       type: "pcb_cutout",
       pcb_cutout_id: "pcb_cutout_circle_0",
       shape: "circle",
       center: { x: 0, y: 0 },
       radius: 4,
-    } as PcbCutoutCircle,
+    } as PcbCutout,
     {
       type: "pcb_cutout",
       pcb_cutout_id: "pcb_cutout_polygon_0",
@@ -134,7 +132,7 @@ test("createBoardMesh subtracts rectangular, circular, and polygon cutouts", () 
         { x: 15, y: -5 },
         { x: 5, y: -5 },
       ],
-    } as PcbCutoutPolygon,
+    } as PcbCutout,
     {
       type: "pcb_cutout",
       pcb_cutout_id: "pcb_cutout_polygon_star",
@@ -151,7 +149,7 @@ test("createBoardMesh subtracts rectangular, circular, and polygon cutouts", () 
         { x: -3.804, y: -13.09 },
         { x: -1.176, y: -14.19 },
       ],
-    } as PcbCutoutPolygon,
+    } as PcbCutout,
   ]
 
   const mesh = createBoardMesh(board, {
@@ -179,14 +177,15 @@ test("createBoardMesh subtracts rectangular, circular, and polygon cutouts", () 
   }
 
   const outlineArea = board.width * board.height
-  const triangleCutout = cutouts[2] as PcbCutoutPolygon
-  const starCutout = cutouts[3] as PcbCutoutPolygon
-
   const expectedCutoutArea =
     8 * 5 +
     Math.PI * 4 ** 2 +
-    polygonArea(triangleCutout.points ?? []) +
-    polygonArea(starCutout.points ?? [])
+    polygonArea(
+      cutouts[2]?.shape === "polygon" ? cutouts[2].points ?? [] : [],
+    ) +
+    polygonArea(
+      cutouts[3]?.shape === "polygon" ? cutouts[3].points ?? [] : [],
+    )
 
   expect(topArea).toBeCloseTo(outlineArea - expectedCutoutArea, 1)
 })

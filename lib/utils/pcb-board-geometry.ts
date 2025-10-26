@@ -19,9 +19,7 @@ import type {
   PcbBoard,
   PcbHole,
   PCBPlatedHole,
-  PcbCutoutRect,
-  PcbCutoutCircle,
-  PcbCutoutPolygon,
+  PcbCutout,
   Point,
 } from "circuit-json"
 import type { BoundingBox, STLMesh, Triangle } from "../types"
@@ -29,7 +27,7 @@ import type { BoundingBox, STLMesh, Triangle } from "../types"
 const DEFAULT_SEGMENTS = 64
 const RADIUS_EPSILON = 1e-4
 
-export type BoardCutout = PcbCutoutRect | PcbCutoutCircle | PcbCutoutPolygon
+export type BoardCutout = PcbCutout
 
 export interface BoardGeometryOptions {
   thickness: number
@@ -42,6 +40,14 @@ const toVec2 = (point: Point, center: { x: number; y: number }): Vec2 => [
   point.x - center.x,
   point.y - center.y,
 ]
+
+const toBoardSpaceVec2 = (
+  point: Point,
+  center: { x: number; y: number },
+): Vec2 => [point.x - center.x, -(point.y - center.y)]
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value)
 
 export const arePointsClockwise = (points: Vec2[]): boolean => {
   let area = 0
@@ -329,84 +335,86 @@ const createCutoutGeoms = (
   const geoms: Geom3[] = []
 
   for (const cutout of cutouts) {
-    const cutoutRecord = cutout as Record<string, unknown>
-    const shape = cutoutRecord.shape
+    if (!cutout) continue
 
-    if (shape === "rect") {
-      const width = resolveLengthValue(cutoutRecord.width)
-      const height = resolveLengthValue(cutoutRecord.height)
-      if (!width || !height) continue
+    switch (cutout.shape) {
+      case "rect": {
+        const { center } = cutout
+        if (!center || !isFiniteNumber(center.x) || !isFiniteNumber(center.y)) {
+          continue
+        }
 
-      const center = (cutoutRecord.center ?? {}) as Point
-      if (typeof center?.x !== "number" || typeof center?.y !== "number") {
-        continue
+        const width = resolveLengthValue(cutout.width)
+        const height = resolveLengthValue(cutout.height)
+        if (!width || !height) continue
+
+        const relX = center.x - boardCenter.x
+        const relY = -(center.y - boardCenter.y)
+
+        const rect2d = rectangle({ size: [width, height] })
+        let geom = extrudeLinear({ height: thickness + 1 }, rect2d)
+        geom = translate([0, 0, -(thickness + 1) / 2], geom)
+
+        const rotationRad = resolveRotationRadians(cutout.rotation)
+        if (rotationRad) {
+          geom = rotateZ(-rotationRad, geom)
+        }
+
+        geoms.push(translate([relX, relY, 0], geom))
+        break
       }
+      case "circle": {
+        const { center } = cutout
+        if (!center || !isFiniteNumber(center.x) || !isFiniteNumber(center.y)) {
+          continue
+        }
 
-      const relX = center.x - boardCenter.x
-      const relY = -(center.y - boardCenter.y)
+        const radius =
+          resolveLengthValue(cutout.radius) ??
+          ("diameter" in cutout
+            ? (() => {
+                const diameter = resolveLengthValue(
+                  (cutout as { diameter?: unknown }).diameter,
+                )
+                return typeof diameter === "number" ? diameter / 2 : undefined
+              })()
+            : undefined)
 
-      const rect2d = rectangle({ size: [width, height] })
-      let geom = extrudeLinear({ height: thickness + 1 }, rect2d)
-      geom = translate([0, 0, -(thickness + 1) / 2], geom)
+        if (!radius) continue
 
-      const rotationRad = resolveRotationRadians(cutoutRecord.rotation)
-      if (rotationRad) {
-        geom = rotateZ(-rotationRad, geom)
+        const relX = center.x - boardCenter.x
+        const relY = -(center.y - boardCenter.y)
+
+        geoms.push(createCircularHole(relX, relY, radius, thickness))
+        break
       }
+      case "polygon": {
+        const { points } = cutout
+        if (!Array.isArray(points) || points.length < 3) continue
 
-      geom = translate([relX, relY, 0], geom)
-      geoms.push(geom)
-      continue
-    }
+        let polygonPoints = points
+          .filter(
+            (point): point is Point =>
+              point !== undefined &&
+              isFiniteNumber(point.x) &&
+              isFiniteNumber(point.y),
+          )
+          .map((point) => toBoardSpaceVec2(point, boardCenter))
 
-    if (shape === "circle") {
-      const center = (cutoutRecord.center ?? {}) as Point
-      if (typeof center?.x !== "number" || typeof center?.y !== "number") {
-        continue
+        if (polygonPoints.length < 3) continue
+
+        if (arePointsClockwise(polygonPoints)) {
+          polygonPoints = polygonPoints.slice().reverse()
+        }
+
+        const polygon2d = polygon({ points: polygonPoints })
+        let geom = extrudeLinear({ height: thickness + 1 }, polygon2d)
+        geom = translate([0, 0, -(thickness + 1) / 2], geom)
+        geoms.push(geom)
+        break
       }
-
-      const radius =
-        resolveLengthValue(cutoutRecord.radius) ??
-        ((): number | undefined => {
-          const diameter = resolveLengthValue(cutoutRecord.diameter)
-          if (typeof diameter === "number") return diameter / 2
-          return undefined
-        })()
-
-      if (!radius) continue
-
-      const relX = center.x - boardCenter.x
-      const relY = -(center.y - boardCenter.y)
-
-      geoms.push(
-        createCircularHole(relX, relY, radius, thickness),
-      )
-      continue
-    }
-
-    if (shape === "polygon") {
-      const points = cutoutRecord.points as Point[] | undefined
-      if (!Array.isArray(points) || points.length < 3) continue
-
-      let polygonPoints = points
-        .filter((point): point is Point =>
-          point !== undefined &&
-          typeof point.x === "number" &&
-          typeof point.y === "number",
-        )
-        .map((point) => toVec2(point, boardCenter))
-        .map(([x, y]) => [x, -y] as Vec2)
-
-      if (polygonPoints.length < 3) continue
-
-      if (arePointsClockwise(polygonPoints)) {
-        polygonPoints = polygonPoints.slice().reverse()
-      }
-
-      const polygon2d = polygon({ points: polygonPoints })
-      let geom = extrudeLinear({ height: thickness + 1 }, polygon2d)
-      geom = translate([0, 0, -(thickness + 1) / 2], geom)
-      geoms.push(geom)
+      default:
+        break
     }
   }
 
