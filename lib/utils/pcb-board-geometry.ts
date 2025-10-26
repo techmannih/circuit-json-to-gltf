@@ -68,75 +68,6 @@ const getNumberProperty = (
   return typeof value === "number" ? value : undefined
 }
 
-const resolveLengthValue = (value: unknown): number | undefined => {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    const match = trimmed.match(/^(-?\d+(?:\.\d+)?)(mm|mil|in)?$/i)
-    if (match) {
-      const magnitude = Number.parseFloat(match[1]!)
-      const unit = match[2]?.toLowerCase()
-      if (!unit || unit === "mm") return magnitude
-      if (unit === "mil") return magnitude * 0.0254
-      if (unit === "in") return magnitude * 25.4
-    }
-  }
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>
-    if (typeof record.value === "number") {
-      const unit = (record.unit ?? record.units) as string | undefined
-      if (!unit || unit === "mm") return record.value
-      if (unit === "mil") return record.value * 0.0254
-      if (unit === "in") return record.value * 25.4
-      return record.value
-    }
-    const mm = record.mm ?? record.millimeters ?? record.millimetres
-    if (typeof mm === "number") return mm
-    const mil = record.mil ?? record.mils
-    if (typeof mil === "number") return mil * 0.0254
-    const inch = record.in ?? record.inch ?? record.inches
-    if (typeof inch === "number") return inch * 25.4
-  }
-  return undefined
-}
-
-const resolveRotationRadians = (rotation: unknown): number => {
-  if (!rotation) return 0
-  if (typeof rotation === "number" && Number.isFinite(rotation)) {
-    return (rotation * Math.PI) / 180
-  }
-  if (typeof rotation === "object") {
-    const record = rotation as Record<string, unknown>
-    const candidates = [
-      record.deg,
-      record.degs,
-      record.degree,
-      record.degrees,
-      record.ccw,
-      record.ccw_degrees,
-      record.ccw_degree,
-    ]
-    for (const value of candidates) {
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return (value * Math.PI) / 180
-      }
-    }
-    const radCandidates = [
-      record.rad,
-      record.rads,
-      record.radian,
-      record.radians,
-      record.ccw_radians,
-    ]
-    for (const value of radCandidates) {
-      if (typeof value === "number" && Number.isFinite(value)) {
-        return value
-      }
-    }
-  }
-  return 0
-}
-
 const createBoardOutlineGeom = (
   board: PcbBoard,
   center: { x: number; y: number },
@@ -344,8 +275,14 @@ const createCutoutGeoms = (
           continue
         }
 
-        const width = resolveLengthValue(cutout.width)
-        const height = resolveLengthValue(cutout.height)
+        const width =
+          typeof cutout.width === "number" && Number.isFinite(cutout.width)
+            ? cutout.width
+            : undefined
+        const height =
+          typeof cutout.height === "number" && Number.isFinite(cutout.height)
+            ? cutout.height
+            : undefined
         if (!width || !height) continue
 
         const relX = center.x - boardCenter.x
@@ -355,7 +292,40 @@ const createCutoutGeoms = (
         let geom = extrudeLinear({ height: thickness + 1 }, rect2d)
         geom = translate([0, 0, -(thickness + 1) / 2], geom)
 
-        const rotationRad = resolveRotationRadians(cutout.rotation)
+        let rotationRad = 0
+        const { rotation } = cutout
+        if (typeof rotation === "number" && Number.isFinite(rotation)) {
+          rotationRad = (rotation * Math.PI) / 180
+        } else if (rotation && typeof rotation === "object") {
+          const record = rotation as Record<string, unknown>
+          const degreeCandidate = [
+            record.deg,
+            record.degs,
+            record.degree,
+            record.degrees,
+            record.ccw,
+            record.ccw_degrees,
+            record.ccw_degree,
+          ].find((value): value is number =>
+            typeof value === "number" && Number.isFinite(value),
+          )
+          if (degreeCandidate !== undefined) {
+            rotationRad = (degreeCandidate * Math.PI) / 180
+          } else {
+            const radCandidate = [
+              record.rad,
+              record.rads,
+              record.radian,
+              record.radians,
+              record.ccw_radians,
+            ].find((value): value is number =>
+              typeof value === "number" && Number.isFinite(value),
+            )
+            if (radCandidate !== undefined) {
+              rotationRad = radCandidate
+            }
+          }
+        }
         if (rotationRad) {
           geom = rotateZ(-rotationRad, geom)
         }
@@ -369,16 +339,24 @@ const createCutoutGeoms = (
           continue
         }
 
-        const radius =
-          resolveLengthValue(cutout.radius) ??
-          ("diameter" in cutout
-            ? (() => {
-                const diameter = resolveLengthValue(
-                  (cutout as { diameter?: unknown }).diameter,
-                )
-                return typeof diameter === "number" ? diameter / 2 : undefined
-              })()
-            : undefined)
+        const radius = (() => {
+          if (
+            typeof cutout.radius === "number" &&
+            Number.isFinite(cutout.radius)
+          ) {
+            return cutout.radius
+          }
+
+          if (
+            "diameter" in cutout &&
+            typeof cutout.diameter === "number" &&
+            Number.isFinite(cutout.diameter)
+          ) {
+            return cutout.diameter / 2
+          }
+
+          return undefined
+        })()
 
         if (!radius) continue
 
