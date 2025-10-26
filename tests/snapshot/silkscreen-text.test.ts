@@ -5,7 +5,6 @@ import { getBestCameraPosition } from "../../lib/utils/camera-position"
 import type { CircuitJson } from "circuit-json"
 
 test("silkscreen-text-snapshot", async () => {
-  // Create a simple circuit with just a board and silkscreen text
   const circuitJson: CircuitJson = [
     {
       type: "pcb_board",
