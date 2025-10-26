@@ -20,6 +20,8 @@ import type {
   PcbHole,
   PCBPlatedHole,
   PcbCutoutRect,
+  PcbCutoutCircle,
+  PcbCutoutPolygon,
   Point,
 } from "circuit-json"
 import type { BoundingBox, STLMesh, Triangle } from "../types"
@@ -27,11 +29,13 @@ import type { BoundingBox, STLMesh, Triangle } from "../types"
 const DEFAULT_SEGMENTS = 64
 const RADIUS_EPSILON = 1e-4
 
+export type BoardCutout = PcbCutoutRect | PcbCutoutCircle | PcbCutoutPolygon
+
 export interface BoardGeometryOptions {
   thickness: number
   holes?: PcbHole[]
   platedHoles?: PCBPlatedHole[]
-  cutouts?: PcbCutoutRect[]
+  cutouts?: BoardCutout[]
 }
 
 const toVec2 = (point: Point, center: { x: number; y: number }): Vec2 => [
@@ -320,30 +324,90 @@ const createHoleGeoms = (
 const createCutoutGeoms = (
   boardCenter: { x: number; y: number },
   thickness: number,
-  cutouts: PcbCutoutRect[] = [],
+  cutouts: BoardCutout[] = [],
 ): Geom3[] => {
   const geoms: Geom3[] = []
 
   for (const cutout of cutouts) {
-    if (cutout.shape !== "rect") continue
-    const width = resolveLengthValue((cutout as any).width)
-    const height = resolveLengthValue((cutout as any).height)
-    if (!width || !height) continue
+    const cutoutRecord = cutout as Record<string, unknown>
+    const shape = cutoutRecord.shape
 
-    const relX = cutout.center.x - boardCenter.x
-    const relY = -(cutout.center.y - boardCenter.y)
+    if (shape === "rect") {
+      const width = resolveLengthValue(cutoutRecord.width)
+      const height = resolveLengthValue(cutoutRecord.height)
+      if (!width || !height) continue
 
-    const rect2d = rectangle({ size: [width, height] })
-    let geom = extrudeLinear({ height: thickness + 1 }, rect2d)
-    geom = translate([0, 0, -(thickness + 1) / 2], geom)
+      const center = (cutoutRecord.center ?? {}) as Point
+      if (typeof center?.x !== "number" || typeof center?.y !== "number") {
+        continue
+      }
 
-    const rotationRad = resolveRotationRadians((cutout as any).rotation)
-    if (rotationRad) {
-      geom = rotateZ(-rotationRad, geom)
+      const relX = center.x - boardCenter.x
+      const relY = -(center.y - boardCenter.y)
+
+      const rect2d = rectangle({ size: [width, height] })
+      let geom = extrudeLinear({ height: thickness + 1 }, rect2d)
+      geom = translate([0, 0, -(thickness + 1) / 2], geom)
+
+      const rotationRad = resolveRotationRadians(cutoutRecord.rotation)
+      if (rotationRad) {
+        geom = rotateZ(-rotationRad, geom)
+      }
+
+      geom = translate([relX, relY, 0], geom)
+      geoms.push(geom)
+      continue
     }
 
-    geom = translate([relX, relY, 0], geom)
-    geoms.push(geom)
+    if (shape === "circle") {
+      const center = (cutoutRecord.center ?? {}) as Point
+      if (typeof center?.x !== "number" || typeof center?.y !== "number") {
+        continue
+      }
+
+      const radius =
+        resolveLengthValue(cutoutRecord.radius) ??
+        ((): number | undefined => {
+          const diameter = resolveLengthValue(cutoutRecord.diameter)
+          if (typeof diameter === "number") return diameter / 2
+          return undefined
+        })()
+
+      if (!radius) continue
+
+      const relX = center.x - boardCenter.x
+      const relY = -(center.y - boardCenter.y)
+
+      geoms.push(
+        createCircularHole(relX, relY, radius, thickness),
+      )
+      continue
+    }
+
+    if (shape === "polygon") {
+      const points = cutoutRecord.points as Point[] | undefined
+      if (!Array.isArray(points) || points.length < 3) continue
+
+      let polygonPoints = points
+        .filter((point): point is Point =>
+          point !== undefined &&
+          typeof point.x === "number" &&
+          typeof point.y === "number",
+        )
+        .map((point) => toVec2(point, boardCenter))
+        .map(([x, y]) => [x, -y] as Vec2)
+
+      if (polygonPoints.length < 3) continue
+
+      if (arePointsClockwise(polygonPoints)) {
+        polygonPoints = polygonPoints.slice().reverse()
+      }
+
+      const polygon2d = polygon({ points: polygonPoints })
+      let geom = extrudeLinear({ height: thickness + 1 }, polygon2d)
+      geom = translate([0, 0, -(thickness + 1) / 2], geom)
+      geoms.push(geom)
+    }
   }
 
   return geoms
