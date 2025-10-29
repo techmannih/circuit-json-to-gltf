@@ -4,8 +4,7 @@ name: Bun Test
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   test:
@@ -26,13 +25,15 @@ jobs:
 
       - name: Run tests
         run: bun test
-        
-      - name: Upload 3D Snapshot Artifacts on Failure
-        if: failure()
+
+      - name: Upload Snapshot Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 3d-snapshots-node${{ matrix.node }}
+          name: snapshots-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            tests/**/__snapshots__/*.diff.png
             tests/**/__snapshots__/*.snap.png
+            tests/**/__snapshots__/*.received.png
+            tests/**/__snapshots__/*.diff.png
           if-no-files-found: ignore
+          retention-days: 7
