@@ -49,7 +49,7 @@ test("silkscreen-text-snapshot", async () => {
       font: "tscircuit2024",
       font_size: 0.6,
       layer: "top",
-      text: "0123456789",
+      text: "9876543210",
       ccw_rotation: 0,
     },
   ]
