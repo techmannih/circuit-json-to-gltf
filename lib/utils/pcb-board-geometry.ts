@@ -1,5 +1,9 @@
 import { extrudeLinear } from "@jscad/modeling/src/operations/extrusions"
-import { polygon, rectangle, roundedRectangle } from "@jscad/modeling/src/primitives"
+import {
+  polygon,
+  rectangle,
+  roundedRectangle,
+} from "@jscad/modeling/src/primitives"
 import {
   translate,
   rotateZ,
