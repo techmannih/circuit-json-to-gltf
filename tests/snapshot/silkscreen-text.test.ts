@@ -4,7 +4,8 @@ import { convertCircuitJsonToGltf } from "../../lib/index"
 import { getBestCameraPosition } from "../../lib/utils/camera-position"
 import type { CircuitJson } from "circuit-json"
 
-test("pcb silkscreen text snapshot", async () => {
+test("silkscreen-text-snapshot", async () => {
+  // Create a simple circuit with just a board and silkscreen text
   const circuitJson: CircuitJson = [
     {
       type: "pcb_board",
@@ -21,7 +22,7 @@ test("pcb silkscreen text snapshot", async () => {
       pcb_silkscreen_text_id: "text1",
       pcb_component_id: "board1",
       anchor_alignment: "center",
-      anchor_position: { x: 0.0434124123, y: 2.13441523 },
+      anchor_position: { x: 0, y: 2 },
       font: "tscircuit2024",
       font_size: 1.2,
       layer: "top",
@@ -33,7 +34,7 @@ test("pcb silkscreen text snapshot", async () => {
       pcb_silkscreen_text_id: "text2",
       pcb_component_id: "board1",
       anchor_alignment: "center",
-      anchor_position: { x: 0.0434124123, y: 0.13441523 },
+      anchor_position: { x: 0, y: 0 },
       font: "tscircuit2024",
       font_size: 0.8,
       layer: "top",
@@ -45,11 +46,11 @@ test("pcb silkscreen text snapshot", async () => {
       pcb_silkscreen_text_id: "text3",
       pcb_component_id: "board1",
       anchor_alignment: "center",
-      anchor_position: { x: 0.0434124123, y: -2.13441523 },
+      anchor_position: { x: 0, y: -2 },
       font: "tscircuit2024",
       font_size: 0.6,
       layer: "top",
-      text: "9876543210",
+      text: "0123456789",
       ccw_rotation: 0,
     },
   ]
