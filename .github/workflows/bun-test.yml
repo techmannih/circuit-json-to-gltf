@@ -26,12 +26,13 @@ jobs:
 
       - name: Run tests
         run: bun test
-
-      - name: Upload diff artifacts
+        
+      - name: Upload test artifacts (snapshots and diffs)
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: diff-images
+          name: test-snapshots-and-diffs
           path: |
-            **/*.diff.png
-          if-no-files-found: ignore
+            tests/snapshot/**/*.snap.png
+            tests/snapshot/**/*.diff.png
+          retention-days: 7
