@@ -4,6 +4,7 @@ import {
   type PcbHole,
   type PCBPlatedHole,
   type PcbCutout,
+  type PcbCopperPour,
 } from "circuit-json"
 import { cju } from "@tscircuit/circuit-json-util"
 import type {
@@ -12,6 +13,7 @@ import type {
   CircuitTo3DOptions,
   Camera3D,
   Light3D,
+  STLMesh,
 } from "../types"
 import { loadSTL } from "../loaders/stl"
 import { loadOBJ } from "../loaders/obj"
@@ -21,10 +23,22 @@ import { loadFootprinterModel } from "../loaders/footprinter"
 import { renderBoardTextures } from "./board-renderer"
 import { COORDINATE_TRANSFORMS } from "../utils/coordinate-transform"
 import { scaleMesh } from "../utils/mesh-scale"
-import { createBoardMesh } from "../utils/pcb-board-geometry"
+import {
+  createBoardMesh,
+  createBoundingBox,
+  geom3ToTriangles,
+} from "../utils/pcb-board-geometry"
+import { extrudeLinear } from "@jscad/modeling/src/operations/extrusions"
+import { polygon } from "@jscad/modeling/src/primitives"
+import { rotateX, translate } from "@jscad/modeling/src/operations/transforms"
+import * as geom3 from "@jscad/modeling/src/geometries/geom3"
+import measureBoundingBox from "@jscad/modeling/src/measurements/measureBoundingBox"
+import { arePointsClockwise } from "../utils/pcb-board-cutouts"
+import type { Vec2 } from "@jscad/modeling/src/maths/types"
 
 const DEFAULT_BOARD_THICKNESS = 1.6 // mm
 const DEFAULT_COMPONENT_HEIGHT = 2 // mm
+const COPPER_THICKNESS = 0.035
 
 function convertRotationFromCadRotation(rot: {
   x: number
@@ -45,6 +59,7 @@ export async function convertCircuitJsonTo3D(
   const {
     pcbColor = "rgba(0,140,0,0.8)",
     componentColor = "rgba(128,128,128,0.5)",
+    copperColor = "#C87B4B",
     boardThickness = DEFAULT_BOARD_THICKNESS,
     defaultComponentHeight = DEFAULT_COMPONENT_HEIGHT,
     renderBoardTextures: shouldRenderTextures = true,
@@ -122,6 +137,74 @@ export async function convertCircuitJsonTo3D(
     }
 
     boxes.push(boardBox)
+  }
+
+  const pcbPours = (db.pcb_copper_pour?.list?.() ?? []) as PcbCopperPour[]
+
+  for (const pour of pcbPours) {
+    const isBottomLayer = pour.layer === "bottom"
+    const y = isBottomLayer
+      ? -(effectiveBoardThickness / 2) - COPPER_THICKNESS / 2
+      : effectiveBoardThickness / 2 + COPPER_THICKNESS / 2
+
+    if (pour.shape === "rect") {
+      const box: Box3D = {
+        center: {
+          x: pour.center.x,
+          y,
+          z: pour.center.y,
+        },
+        size: {
+          x: pour.width,
+          y: COPPER_THICKNESS,
+          z: pour.height,
+        },
+        rotation: { x: 0, y: 0, z: 0 },
+        color: pour.covered_with_solder_mask ? pcbColor : copperColor,
+      }
+      if (pour.rotation && typeof pour.rotation === "number") {
+        box.rotation!.y = -(pour.rotation * Math.PI) / 180
+      }
+      boxes.push(box)
+    } else if (pour.shape === "polygon") {
+      const { points } = pour
+
+      // calculate center of polygon
+      let center_x = 0
+      let center_y = 0
+      for (const p of points) {
+        center_x += p.x
+        center_y += p.y
+      }
+      center_x /= points.length
+      center_y /= points.length
+
+      const relativePoints: Vec2[] = points.map((p) => [
+        p.x - center_x,
+        -(p.y - center_y),
+      ])
+      if (arePointsClockwise(relativePoints)) {
+        relativePoints.reverse()
+      }
+
+      const shape2d = polygon({ points: relativePoints })
+      let geom = extrudeLinear({ height: COPPER_THICKNESS }, shape2d)
+      geom = translate([0, 0, -COPPER_THICKNESS / 2], geom) // center on Z
+      geom = rotateX(-Math.PI / 2, geom)
+
+      const triangles = geom3ToTriangles(geom)
+      const bbox = createBoundingBox(measureBoundingBox(geom))
+
+      const mesh: STLMesh = { triangles, boundingBox: bbox }
+
+      const box: Box3D = {
+        center: { x: center_x, y, z: center_y },
+        size: { x: 1, y: 1, z: 1 }, // size doesn't matter much as we provide mesh
+        mesh,
+        color: pour.covered_with_solder_mask ? pcbColor : copperColor,
+      }
+      boxes.push(box)
+    }
   }
 
   // Process CAD components (3D models)

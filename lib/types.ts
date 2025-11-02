@@ -132,6 +132,7 @@ export interface GLTFExportOptions {
 export interface CircuitTo3DOptions {
   pcbColor?: Color
   componentColor?: Color
+  copperColor?: Color
   boardThickness?: number
   defaultComponentHeight?: number
   renderBoardTextures?: boolean

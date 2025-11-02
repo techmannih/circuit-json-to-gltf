@@ -226,7 +226,10 @@ const createHoleGeoms = (
   return holeGeoms
 }
 
-const geom3ToTriangles = (geometry: Geom3, polygons?: any[]): Triangle[] => {
+export const geom3ToTriangles = (
+  geometry: Geom3,
+  polygons?: any[],
+): Triangle[] => {
   const sourcePolygons = polygons ?? geom3.toPolygons(geometry)
   const triangles: Triangle[] = []
 
@@ -273,7 +276,7 @@ const geom3ToTriangles = (geometry: Geom3, polygons?: any[]): Triangle[] => {
   return triangles
 }
 
-const createBoundingBox = (bbox: [number[], number[]]): BoundingBox => {
+export const createBoundingBox = (bbox: [number[], number[]]): BoundingBox => {
   const [min, max] = bbox
   return {
     min: { x: min[0]!, y: min[1]!, z: min[2]! },
