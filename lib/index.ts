@@ -79,3 +79,63 @@ export {
 
 // Re-export utilities (conditionally based on environment)
 // Note: svg-to-png utilities are environment-specific and not exported here
+
+export interface Point {
+  x: number
+  y: number
+}
+
+export type LayerRef = string | number
+
+export interface BRepShape {
+  polygons: Point[][]
+  is_negative?: boolean
+}
+
+// Rectangular Pour
+export interface PcbCopperPourRect {
+  type: "pcb_copper_pour"
+  pcb_copper_pour_id: string
+  covered_with_solder_mask: boolean
+  pcb_group_id?: string
+  subcircuit_id?: string
+  layer: LayerRef
+  source_net_id?: string
+  shape: "rect"
+  center: Point
+  width: number
+  height: number
+  rotation?: any
+}
+
+// BRep Pour
+export interface PcbCopperPourBRep {
+  type: "pcb_copper_pour"
+  pcb_copper_pour_id: string
+  covered_with_solder_mask: boolean
+  pcb_group_id?: string
+  subcircuit_id?: string
+  layer: LayerRef
+  source_net_id?: string
+  shape: "brep"
+  brep_shape: BRepShape
+}
+
+// Polygon Pour
+export interface PcbCopperPourPolygon {
+  type: "pcb_copper_pour"
+  pcb_copper_pour_id: string
+  covered_with_solder_mask: boolean
+  pcb_group_id?: string
+  subcircuit_id?: string
+  layer: LayerRef
+  source_net_id?: string
+  shape: "polygon"
+  points: Point[]
+}
+
+// Union of all pour shapes
+export type PcbCopperPour =
+  | PcbCopperPourRect
+  | PcbCopperPourBRep
+  | PcbCopperPourPolygon
