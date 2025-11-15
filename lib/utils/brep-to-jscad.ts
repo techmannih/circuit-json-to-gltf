@@ -3,7 +3,7 @@ import type { Vec2 } from "@jscad/modeling/src/maths/types"
 /**
  * Converts vertices with optional bulge values into a series of points
  * that approximate the shape including arc segments.
- * 
+ *
  * Bulge is a value that creates an arc between two vertices:
  * - bulge = 0: straight line
  * - bulge > 0: arc bulges to the right (when traveling from v1 to v2)
@@ -39,7 +39,7 @@ export function convertBrepRingToPoints(
 
       // Calculate arc geometry from bulge value
       const includedAngle = 4 * Math.atan(bulge)
-      const radius = Math.abs((chordLength / 2) / Math.sin(includedAngle / 2))
+      const radius = Math.abs(chordLength / 2 / Math.sin(includedAngle / 2))
       const sagitta = Math.abs(bulge) * (chordLength / 2)
 
       // Find chord midpoint
@@ -55,12 +55,18 @@ export function convertBrepRingToPoints(
       const arcCenterY = chordMidY + perpUnitY * sagitta
 
       // Calculate angular positions
-      const startAngle = Math.atan2(startVertex.y - arcCenterY, startVertex.x - arcCenterX)
-      const endAngle = Math.atan2(endVertex.y - arcCenterY, endVertex.x - arcCenterX)
+      const startAngle = Math.atan2(
+        startVertex.y - arcCenterY,
+        startVertex.x - arcCenterX,
+      )
+      const endAngle = Math.atan2(
+        endVertex.y - arcCenterY,
+        endVertex.x - arcCenterX,
+      )
 
       // Determine sweep angle and direction
       let sweepAngle = endAngle - startAngle
-      
+
       if (bulge > 0) {
         // Positive bulge: counterclockwise arc
         if (sweepAngle < 0) sweepAngle += 2 * Math.PI
@@ -70,8 +76,11 @@ export function convertBrepRingToPoints(
       }
 
       // Generate interpolated points along the arc
-      const segmentCount = Math.max(3, Math.ceil(Math.abs(sweepAngle) * segmentsPerArc / Math.PI))
-      
+      const segmentCount = Math.max(
+        3,
+        Math.ceil((Math.abs(sweepAngle) * segmentsPerArc) / Math.PI),
+      )
+
       for (let j = 0; j < segmentCount; j++) {
         const t = j / segmentCount
         const currentAngle = startAngle + sweepAngle * t

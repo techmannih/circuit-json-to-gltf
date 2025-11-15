@@ -47,6 +47,7 @@ test("pcb-copper-pour-snapshot", async () => {
     boardTextureResolution: 512,
     includeModels: false,
     showBoundingBoxes: false,
+    renderCopperPoursAs3D: true, // Render as 3D geometry for this test
   })
 
   // Ensure we got a valid GLB buffer

@@ -150,151 +150,153 @@ export async function convertCircuitJsonTo3D(
     const pcbPours = (db.pcb_copper_pour?.list?.() ?? []) as PcbCopperPour[]
 
     for (const pour of pcbPours) {
-    const isBottomLayer = pour.layer === "bottom"
-    const y = isBottomLayer
-      ? -(effectiveBoardThickness / 2) - COPPER_THICKNESS / 2
-      : effectiveBoardThickness / 2 + COPPER_THICKNESS / 2
+      const isBottomLayer = pour.layer === "bottom"
+      const y = isBottomLayer
+        ? -(effectiveBoardThickness / 2) - COPPER_THICKNESS / 2
+        : effectiveBoardThickness / 2 + COPPER_THICKNESS / 2
 
-    if (pour.shape === "rect") {
-      const box: Box3D = {
-        center: {
-          x: pour.center.x,
-          y,
-          z: pour.center.y,
-        },
-        size: {
-          x: pour.width,
-          y: COPPER_THICKNESS,
-          z: pour.height,
-        },
-        rotation: { x: 0, y: 0, z: 0 },
-        color: pour.covered_with_solder_mask ? pcbColor : copperColor,
-      }
-      if (pour.rotation && typeof pour.rotation === "number") {
-        box.rotation!.y = -(pour.rotation * Math.PI) / 180
-      }
-      boxes.push(box)
-    } else if (pour.shape === "polygon") {
-      const { points } = pour
-
-      // calculate center of polygon
-      let center_x = 0
-      let center_y = 0
-      for (const p of points) {
-        center_x += p.x
-        center_y += p.y
-      }
-      center_x /= points.length
-      center_y /= points.length
-
-      const relativePoints: Vec2[] = points.map((p) => [
-        p.x - center_x,
-        -(p.y - center_y),
-      ])
-      if (arePointsClockwise(relativePoints)) {
-        relativePoints.reverse()
-      }
-
-      const shape2d = polygon({ points: relativePoints })
-      let geom = extrudeLinear({ height: COPPER_THICKNESS }, shape2d)
-      geom = translate([0, 0, -COPPER_THICKNESS / 2], geom) // center on Z
-      geom = rotateX(-Math.PI / 2, geom)
-
-      const triangles = geom3ToTriangles(geom)
-      const bbox = createBoundingBox(measureBoundingBox(geom))
-
-      const mesh: STLMesh = { triangles, boundingBox: bbox }
-
-      const box: Box3D = {
-        center: { x: center_x, y, z: center_y },
-        size: { x: 1, y: 1, z: 1 }, // size doesn't matter much as we provide mesh
-        mesh,
-        color: pour.covered_with_solder_mask ? pcbColor : copperColor,
-      }
-      boxes.push(box)
-    } else if (pour.shape === "brep") {
-      const { brep_shape } = pour
-
-      if (!brep_shape || !brep_shape.outer_ring) continue
-
-      // Convert outer ring vertices to points (handling bulges)
-      const outerPoints = convertBrepRingToPoints(brep_shape.outer_ring.vertices)
-
-      // Calculate center of the outer ring
-      let center_x = 0
-      let center_y = 0
-      for (const p of outerPoints) {
-        center_x += p[0]
-        center_y += p[1]
-      }
-      center_x /= outerPoints.length
-      center_y /= outerPoints.length
-
-      // Convert to relative coordinates and flip Y for JSCAD
-      const relativeOuterPoints: Vec2[] = outerPoints.map((p) => [
-        p[0] - center_x,
-        -(p[1] - center_y),
-      ])
-
-      // Ensure counter-clockwise winding for outer ring
-      if (arePointsClockwiseBRep(relativeOuterPoints)) {
-        relativeOuterPoints.reverse()
-      }
-
-      // Create the outer shape
-      const outerShape = polygon({ points: relativeOuterPoints })
-
-      // Handle inner rings (holes)
-      const holes: any[] = []
-      if (brep_shape.inner_rings && brep_shape.inner_rings.length > 0) {
-        for (const innerRing of brep_shape.inner_rings) {
-          const innerPoints = convertBrepRingToPoints(innerRing.vertices)
-
-          // Convert to relative coordinates and flip Y
-          const relativeInnerPoints: Vec2[] = innerPoints.map((p) => [
-            p[0] - center_x,
-            -(p[1] - center_y),
-          ])
-
-          // Ensure clockwise winding for holes (opposite of outer)
-          if (!arePointsClockwiseBRep(relativeInnerPoints)) {
-            relativeInnerPoints.reverse()
-          }
-
-          holes.push(polygon({ points: relativeInnerPoints }))
+      if (pour.shape === "rect") {
+        const box: Box3D = {
+          center: {
+            x: pour.center.x,
+            y,
+            z: pour.center.y,
+          },
+          size: {
+            x: pour.width,
+            y: COPPER_THICKNESS,
+            z: pour.height,
+          },
+          rotation: { x: 0, y: 0, z: 0 },
+          color: pour.covered_with_solder_mask ? pcbColor : copperColor,
         }
-      }
+        if (pour.rotation && typeof pour.rotation === "number") {
+          box.rotation!.y = -(pour.rotation * Math.PI) / 180
+        }
+        boxes.push(box)
+      } else if (pour.shape === "polygon") {
+        const { points } = pour
 
-      // Create geometry by subtracting holes from outer shape
-      let geom: any
-      if (holes.length > 0) {
-        const { subtract } = await import(
-          "@jscad/modeling/src/operations/booleans"
+        // calculate center of polygon
+        let center_x = 0
+        let center_y = 0
+        for (const p of points) {
+          center_x += p.x
+          center_y += p.y
+        }
+        center_x /= points.length
+        center_y /= points.length
+
+        const relativePoints: Vec2[] = points.map((p) => [
+          p.x - center_x,
+          -(p.y - center_y),
+        ])
+        if (arePointsClockwise(relativePoints)) {
+          relativePoints.reverse()
+        }
+
+        const shape2d = polygon({ points: relativePoints })
+        let geom = extrudeLinear({ height: COPPER_THICKNESS }, shape2d)
+        geom = translate([0, 0, -COPPER_THICKNESS / 2], geom) // center on Z
+        geom = rotateX(-Math.PI / 2, geom)
+
+        const triangles = geom3ToTriangles(geom)
+        const bbox = createBoundingBox(measureBoundingBox(geom))
+
+        const mesh: STLMesh = { triangles, boundingBox: bbox }
+
+        const box: Box3D = {
+          center: { x: center_x, y, z: center_y },
+          size: { x: 1, y: 1, z: 1 }, // size doesn't matter much as we provide mesh
+          mesh,
+          color: pour.covered_with_solder_mask ? pcbColor : copperColor,
+        }
+        boxes.push(box)
+      } else if (pour.shape === "brep") {
+        const { brep_shape } = pour
+
+        if (!brep_shape || !brep_shape.outer_ring) continue
+
+        // Convert outer ring vertices to points (handling bulges)
+        const outerPoints = convertBrepRingToPoints(
+          brep_shape.outer_ring.vertices,
         )
-        geom = subtract(outerShape, ...holes)
-      } else {
-        geom = outerShape
+
+        // Calculate center of the outer ring
+        let center_x = 0
+        let center_y = 0
+        for (const p of outerPoints) {
+          center_x += p[0]
+          center_y += p[1]
+        }
+        center_x /= outerPoints.length
+        center_y /= outerPoints.length
+
+        // Convert to relative coordinates and flip Y for JSCAD
+        const relativeOuterPoints: Vec2[] = outerPoints.map((p) => [
+          p[0] - center_x,
+          -(p[1] - center_y),
+        ])
+
+        // Ensure counter-clockwise winding for outer ring
+        if (arePointsClockwiseBRep(relativeOuterPoints)) {
+          relativeOuterPoints.reverse()
+        }
+
+        // Create the outer shape
+        const outerShape = polygon({ points: relativeOuterPoints })
+
+        // Handle inner rings (holes)
+        const holes: any[] = []
+        if (brep_shape.inner_rings && brep_shape.inner_rings.length > 0) {
+          for (const innerRing of brep_shape.inner_rings) {
+            const innerPoints = convertBrepRingToPoints(innerRing.vertices)
+
+            // Convert to relative coordinates and flip Y
+            const relativeInnerPoints: Vec2[] = innerPoints.map((p) => [
+              p[0] - center_x,
+              -(p[1] - center_y),
+            ])
+
+            // Ensure clockwise winding for holes (opposite of outer)
+            if (!arePointsClockwiseBRep(relativeInnerPoints)) {
+              relativeInnerPoints.reverse()
+            }
+
+            holes.push(polygon({ points: relativeInnerPoints }))
+          }
+        }
+
+        // Create geometry by subtracting holes from outer shape
+        let geom: any
+        if (holes.length > 0) {
+          const { subtract } = await import(
+            "@jscad/modeling/src/operations/booleans"
+          )
+          geom = subtract(outerShape, ...holes)
+        } else {
+          geom = outerShape
+        }
+
+        // Extrude to 3D
+        geom = extrudeLinear({ height: COPPER_THICKNESS }, geom)
+        geom = translate([0, 0, -COPPER_THICKNESS / 2], geom) // center on Z
+        geom = rotateX(-Math.PI / 2, geom)
+
+        const triangles = geom3ToTriangles(geom)
+        const bbox = createBoundingBox(measureBoundingBox(geom))
+
+        const mesh: STLMesh = { triangles, boundingBox: bbox }
+
+        const box: Box3D = {
+          center: { x: center_x, y, z: center_y },
+          size: { x: 1, y: 1, z: 1 },
+          mesh,
+          color: pour.covered_with_solder_mask ? pcbColor : copperColor,
+        }
+        boxes.push(box)
       }
-
-      // Extrude to 3D
-      geom = extrudeLinear({ height: COPPER_THICKNESS }, geom)
-      geom = translate([0, 0, -COPPER_THICKNESS / 2], geom) // center on Z
-      geom = rotateX(-Math.PI / 2, geom)
-
-      const triangles = geom3ToTriangles(geom)
-      const bbox = createBoundingBox(measureBoundingBox(geom))
-
-      const mesh: STLMesh = { triangles, boundingBox: bbox }
-
-      const box: Box3D = {
-        center: { x: center_x, y, z: center_y },
-        size: { x: 1, y: 1, z: 1 },
-        mesh,
-        color: pour.covered_with_solder_mask ? pcbColor : copperColor,
-      }
-      boxes.push(box)
     }
-  }
   }
 
   // Process CAD components (3D models)
