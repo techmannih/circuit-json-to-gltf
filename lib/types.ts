@@ -139,6 +139,7 @@ export interface CircuitTo3DOptions {
   textureResolution?: number
   coordinateTransform?: CoordinateTransformConfig
   showBoundingBoxes?: boolean
+  renderCopperPoursAs3D?: boolean // If true, renders copper pours as 3D geometry; if false, only in board texture
 }
 
 export interface BoardRenderOptions {
