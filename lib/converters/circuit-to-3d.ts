@@ -5,8 +5,10 @@ import {
   type PCBPlatedHole,
   type PcbCutout,
   type PcbCopperPour,
+  type PcbPanel,
 } from "circuit-json"
 import { cju } from "@tscircuit/circuit-json-util"
+import { filterCutoutsForBoard } from "../utils/pcb-board-cutouts"
 import type {
   Box3D,
   Scene3D,
@@ -25,6 +27,7 @@ import { COORDINATE_TRANSFORMS } from "../utils/coordinate-transform"
 import { scaleMesh } from "../utils/mesh-scale"
 import {
   createBoardMesh,
+  createPanelMesh,
   createBoundingBox,
   geom3ToTriangles,
 } from "../utils/pcb-board-geometry"
@@ -71,24 +74,71 @@ export async function convertCircuitJsonTo3D(
   const db: any = cju(circuitJson)
   const boxes: Box3D[] = []
 
-  // Get PCB board (optional)
+  const pcbPanel = db.pcb_panel?.list?.()[0] as PcbPanel | undefined
   const pcbBoard = db.pcb_board?.list?.()[0]
+
+  // Panels don't have thickness, so always use board's thickness as fallback
   const effectiveBoardThickness = pcbBoard?.thickness ?? boardThickness
 
-  if (pcbBoard) {
+  // Render panel if present (panel takes priority)
+  if (pcbPanel) {
+    const pcbHoles = (db.pcb_hole?.list?.() ?? []) as PcbHole[]
+    const pcbPlatedHoles = (db.pcb_plated_hole?.list?.() ??
+      []) as PCBPlatedHole[]
+
+    const panelMesh = createPanelMesh(pcbPanel, {
+      thickness: effectiveBoardThickness,
+      holes: pcbHoles,
+      platedHoles: pcbPlatedHoles,
+    })
+
+    const meshWidth = panelMesh.boundingBox.max.x - panelMesh.boundingBox.min.x
+    const meshHeight = panelMesh.boundingBox.max.z - panelMesh.boundingBox.min.z
+
+    const panelBox: Box3D = {
+      center: {
+        x: pcbPanel.center.x,
+        y: 0,
+        z: pcbPanel.center.y,
+      },
+      size: {
+        x: Number.isFinite(meshWidth) ? meshWidth : pcbPanel.width,
+        y: effectiveBoardThickness,
+        z: Number.isFinite(meshHeight) ? meshHeight : pcbPanel.height,
+      },
+      mesh: panelMesh,
+      color: pcbColor,
+    }
+
+    // Render panel textures if requested and resolution > 0
+    if (shouldRenderTextures && textureResolution > 0) {
+      try {
+        const textures = await renderBoardTextures(
+          circuitJson,
+          textureResolution,
+        )
+        panelBox.texture = {
+          top: textures.top,
+          bottom: textures.bottom,
+        }
+      } catch (error) {
+        console.warn("Failed to render panel textures:", error)
+        // If texture rendering fails, use the fallback color
+        panelBox.color = pcbColor
+      }
+    } else {
+      // No textures requested, use solid color
+      panelBox.color = pcbColor
+    }
+
+    boxes.push(panelBox)
+  } else if (pcbBoard) {
     // Create the main PCB board box
     const pcbHoles = (db.pcb_hole?.list?.() ?? []) as PcbHole[]
     const pcbPlatedHoles = (db.pcb_plated_hole?.list?.() ??
       []) as PCBPlatedHole[]
     const pcbCutouts = (db.pcb_cutout?.list?.() ?? []) as PcbCutout[]
-    const boardCutouts = pcbCutouts.filter((cutout) => {
-      const cutoutBoardId = (cutout as Record<string, any>).pcb_board_id
-      return (
-        !cutoutBoardId ||
-        cutoutBoardId ===
-          (pcbBoard as unknown as Record<string, any>).pcb_board_id
-      )
-    })
+    const boardCutouts = filterCutoutsForBoard(pcbCutouts, pcbBoard)
 
     const boardMesh = createBoardMesh(pcbBoard, {
       thickness: effectiveBoardThickness,
